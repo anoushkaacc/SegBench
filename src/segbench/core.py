@@ -11,6 +11,7 @@ import pandas as pd
 from segbench.exceptions import ValidationError
 from segbench.io import collect_samples, load_sample
 from segbench.metrics import (
+    aggregate_mean,
     boundary_iou,
     confusion_matrix_from_arrays,
     hd95,
@@ -92,6 +93,8 @@ def evaluate(
 
     confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
     per_image_scores: list[tuple[str, float]] = []
+    boundary_scores: dict[int, list[float]] = {class_id: [] for class_id in range(num_classes)}
+    hd95_scores: dict[int, list[float]] = {class_id: [] for class_id in range(num_classes)}
 
     for sample, (gt, pred) in zip(samples, loaded_masks, strict=True):
         _validate_labels(gt, num_classes, ignore_index, sample.ground_truth_path)
@@ -111,8 +114,23 @@ def evaluate(
                 )["mean_iou"],
             )
         )
+        for class_id in range(num_classes):
+            gt_class = (gt == class_id) & valid
+            pred_class = (pred == class_id) & valid
+            if not np.any(gt_class) and not np.any(pred_class):
+                continue
+            boundary_scores[class_id].append(boundary_iou(gt_class, pred_class))
+            hd95_scores[class_id].append(hd95(gt_class, pred_class))
 
     class_metrics = per_class_metrics(confusion)
+    per_class_boundary_iou = np.array(
+        [aggregate_mean(boundary_scores[class_id]) for class_id in range(num_classes)],
+        dtype=float,
+    )
+    per_class_hd95 = np.array(
+        [aggregate_mean(hd95_scores[class_id]) for class_id in range(num_classes)],
+        dtype=float,
+    )
     selected = select_class_indices(confusion, include_background, background_label)
     per_class_df = pd.DataFrame(
         {
@@ -125,8 +143,8 @@ def evaluate(
             "f1": class_metrics["f1"],
             "support": class_metrics["support"].astype(int),
             "frequency": class_metrics["frequency"],
-            "boundary_iou": [boundary_iou()] * num_classes,
-            "hd95": [hd95()] * num_classes,
+            "boundary_iou": per_class_boundary_iou,
+            "hd95": per_class_hd95,
         }
     )
     per_class_df["is_background"] = per_class_df["class_id"] == background_label
@@ -138,8 +156,8 @@ def evaluate(
         include_background=include_background,
         background_label=background_label,
     )
-    overall["boundary_iou"] = float("nan")
-    overall["hd95"] = float("nan")
+    overall["boundary_iou"] = aggregate_mean(per_class_boundary_iou[selected])
+    overall["hd95"] = aggregate_mean(per_class_hd95[selected])
     overall["background_included"] = float(include_background)
 
     support_series = per_class_df.set_index("class_name")["support"]
@@ -167,7 +185,11 @@ def evaluate(
     report = EvaluationReport(
         overall_metrics=overall,
         per_class_metrics=per_class_df,
-        confusion_matrix=pd.DataFrame(confusion, index=class_names, columns=class_names),
+        confusion_matrix=pd.DataFrame(
+            confusion[np.ix_(selected, selected)],
+            index=np.array(class_names)[selected].tolist(),
+            columns=np.array(class_names)[selected].tolist(),
+        ),
         dataset_stats=stats,
         qualitative_examples=qualitative,
     )

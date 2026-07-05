@@ -27,6 +27,8 @@ def test_evaluate_generates_basic_report(tmp_path: Path):
     assert list(report.per_class_metrics["class_name"]) == ["foreground"]
     assert report.background_included is False
     assert report.dataset_stats["num_images"] == 1
+    assert np.isfinite(report.overall_metrics["boundary_iou"])
+    assert np.isfinite(report.overall_metrics["hd95"])
 
 
 def test_evaluate_rejects_mismatched_shapes(tmp_path: Path):
