@@ -19,6 +19,18 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--output", dest="save_dir", default="results")
     evaluate_parser.add_argument("--ignore-index", dest="ignore_index", type=int)
     evaluate_parser.add_argument("--class-names", nargs="*", dest="class_names")
+    evaluate_parser.add_argument(
+        "--include-background",
+        action="store_true",
+        help="Include the background class in per-class and mean metrics.",
+    )
+    evaluate_parser.add_argument(
+        "--background-label",
+        dest="background_label",
+        type=int,
+        default=0,
+        help="Class id treated as background. Defaults to 0.",
+    )
     return parser
 
 
@@ -33,6 +45,8 @@ def main() -> int:
             images=args.images,
             class_names=args.class_names,
             ignore_index=args.ignore_index,
+            include_background=args.include_background,
+            background_label=args.background_label,
             save_dir=args.save_dir,
         )
         report.save(Path(args.save_dir))

@@ -29,3 +29,16 @@ def test_missing_class_is_ignored_in_macro_average():
 
     overall = overall_metrics(confusion)
     assert np.isclose(overall["mean_recall"], (1.0 + 0.8) / 2)
+
+
+def test_overall_metrics_excludes_background_by_default_when_requested():
+    confusion = np.array(
+        [
+            [50, 10],
+            [20, 20],
+        ]
+    )
+
+    overall = overall_metrics(confusion, include_background=False, background_label=0)
+    assert np.isclose(overall["mean_iou"], 20 / (20 + 10 + 20))
+    assert np.isclose(overall["mean_recall"], 20 / 40)

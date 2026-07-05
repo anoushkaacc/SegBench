@@ -28,6 +28,10 @@ class EvaluationReport:
     def mean_dice(self) -> float:
         return self.overall_metrics["mean_dice"]
 
+    @property
+    def background_included(self) -> bool:
+        return bool(self.overall_metrics.get("background_included", 0.0))
+
     def export_csv(self, save_dir: str | Path) -> None:
         save_path = Path(save_dir)
         metrics_dir = save_path / "metrics"

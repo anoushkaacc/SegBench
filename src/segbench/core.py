@@ -10,7 +10,14 @@ import pandas as pd
 
 from segbench.exceptions import ValidationError
 from segbench.io import collect_samples, load_sample
-from segbench.metrics import boundary_iou, confusion_matrix_from_arrays, hd95, overall_metrics, per_class_metrics
+from segbench.metrics import (
+    boundary_iou,
+    confusion_matrix_from_arrays,
+    hd95,
+    overall_metrics,
+    per_class_metrics,
+    select_class_indices,
+)
 from segbench.report import EvaluationReport
 
 
@@ -56,6 +63,8 @@ def evaluate(
     images: str | Path | None = None,
     class_names: list[str] | None = None,
     ignore_index: int | None = None,
+    include_background: bool = False,
+    background_label: int = 0,
     save_dir: str | Path | None = None,
 ) -> EvaluationReport:
     samples = collect_samples(ground_truth, predictions, images)
@@ -92,9 +101,19 @@ def evaluate(
         pred_valid = pred[valid]
         confusion += confusion_matrix_from_arrays(gt_valid, pred_valid, num_classes)
         image_confusion = confusion_matrix_from_arrays(gt_valid, pred_valid, num_classes)
-        per_image_scores.append((sample.stem, overall_metrics(image_confusion)["mean_iou"]))
+        per_image_scores.append(
+            (
+                sample.stem,
+                overall_metrics(
+                    image_confusion,
+                    include_background=include_background,
+                    background_label=background_label,
+                )["mean_iou"],
+            )
+        )
 
     class_metrics = per_class_metrics(confusion)
+    selected = select_class_indices(confusion, include_background, background_label)
     per_class_df = pd.DataFrame(
         {
             "class_id": np.arange(num_classes),
@@ -110,16 +129,25 @@ def evaluate(
             "hd95": [hd95()] * num_classes,
         }
     )
+    per_class_df["is_background"] = per_class_df["class_id"] == background_label
+    per_class_df["is_included"] = selected
+    per_class_df = per_class_df[per_class_df["is_included"]].reset_index(drop=True)
 
-    overall = overall_metrics(confusion)
+    overall = overall_metrics(
+        confusion,
+        include_background=include_background,
+        background_label=background_label,
+    )
     overall["boundary_iou"] = float("nan")
     overall["hd95"] = float("nan")
+    overall["background_included"] = float(include_background)
 
     support_series = per_class_df.set_index("class_name")["support"]
     stats: dict[str, Any] = {
         "num_images": len(samples),
         "image_resolutions": sorted({f"{height}x{width}" for height, width in image_shapes}),
-        "classes": class_names,
+        "classes": per_class_df["class_name"].tolist(),
+        "ignored_background_label": background_label if not include_background else None,
         "pixels_per_class": {name: int(value) for name, value in support_series.items()},
         "class_distribution": {
             name: float(freq)

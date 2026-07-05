@@ -52,21 +52,40 @@ def per_class_metrics(confusion_matrix: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
-def overall_metrics(confusion_matrix: np.ndarray) -> dict[str, float]:
-    metrics = per_class_metrics(confusion_matrix)
-    support = metrics["support"]
+def select_class_indices(
+    confusion_matrix: np.ndarray,
+    include_background: bool,
+    background_label: int,
+) -> np.ndarray:
+    support = confusion_matrix.sum(axis=1)
     valid = support > 0
+    if include_background:
+        return valid
+    if not 0 <= background_label < confusion_matrix.shape[0]:
+        return valid
+    selected = valid.copy()
+    selected[background_label] = False
+    return selected
+
+
+def overall_metrics(
+    confusion_matrix: np.ndarray,
+    include_background: bool = True,
+    background_label: int = 0,
+) -> dict[str, float]:
+    metrics = per_class_metrics(confusion_matrix)
+    selected = select_class_indices(confusion_matrix, include_background, background_label)
     pixel_accuracy = safe_divide(
         np.array([np.trace(confusion_matrix, dtype=float)]),
         np.array([confusion_matrix.sum()], dtype=float),
     )[0]
 
     return {
-        "mean_iou": float(np.mean(metrics["iou"][valid])) if np.any(valid) else 0.0,
-        "mean_dice": float(np.mean(metrics["dice"][valid])) if np.any(valid) else 0.0,
-        "mean_precision": float(np.mean(metrics["precision"][valid])) if np.any(valid) else 0.0,
-        "mean_recall": float(np.mean(metrics["recall"][valid])) if np.any(valid) else 0.0,
-        "mean_f1": float(np.mean(metrics["f1"][valid])) if np.any(valid) else 0.0,
+        "mean_iou": float(np.mean(metrics["iou"][selected])) if np.any(selected) else 0.0,
+        "mean_dice": float(np.mean(metrics["dice"][selected])) if np.any(selected) else 0.0,
+        "mean_precision": float(np.mean(metrics["precision"][selected])) if np.any(selected) else 0.0,
+        "mean_recall": float(np.mean(metrics["recall"][selected])) if np.any(selected) else 0.0,
+        "mean_f1": float(np.mean(metrics["f1"][selected])) if np.any(selected) else 0.0,
         "pixel_accuracy": float(pixel_accuracy),
     }
 
