@@ -25,6 +25,4 @@ report.save()
 ```bash
 segbench evaluate --gt ground_truth --pred predictions --images images --output results
 ```
-```
----
-```
+
